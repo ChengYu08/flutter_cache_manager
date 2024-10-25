@@ -31,8 +31,8 @@ class WebHelper {
   ///Download the file from the url
   Stream<FileResponse> downloadFile(String url,
       {String? key,
-      Map<String, String>? authHeaders,
-      bool ignoreMemCache = false}) {
+        Map<String, String>? authHeaders,
+        bool ignoreMemCache = false}) {
     key ??= url;
     var subject = _memCache[key];
     if (subject == null || ignoreMemCache) {
@@ -46,10 +46,10 @@ class WebHelper {
   var concurrentCalls = 0;
 
   Future<void> _downloadOrAddToQueue(
-    String url,
-    String key,
-    Map<String, String>? authHeaders,
-  ) async {
+      String url,
+      String key,
+      Map<String, String>? authHeaders,
+      ) async {
     //Add to queue if there are too many calls.
     if (concurrentCalls >= fileFetcher.concurrentFetches) {
       _queue.add(QueueItem(url, key, authHeaders));
@@ -62,7 +62,7 @@ class WebHelper {
     final subject = _memCache[key]!;
     try {
       await for (final result
-          in _updateFile(url, key, authHeaders: authHeaders)) {
+      in _updateFile(url, key, authHeaders: authHeaders)) {
         subject.add(result);
       }
     } on Object catch (e, stackTrace) {
@@ -87,14 +87,15 @@ class WebHelper {
     var cacheObject = await _store.retrieveCacheData(key);
     cacheObject = cacheObject == null
         ? CacheObject(
-            url,
-            key: key,
-            validTill: clock.now(),
-            relativePath: '${const Uuid().v1()}.file',
-          )
+      url,
+      key: key,
+      validTill: clock.now(),
+      relativePath: '${const Uuid().v1()}.file',
+    )
         : cacheObject.copyWith(url: url);
     final response = await _download(cacheObject, authHeaders);
-    yield* _manageResponse(cacheObject, response);
+    var urlExtension = url.substring(url.lastIndexOf("."), url.length);
+    yield* _manageResponse(cacheObject, response, urlExtension);
   }
 
   Future<FileServiceResponse> _download(
@@ -115,8 +116,8 @@ class WebHelper {
     return fileFetcher.get(cacheObject.url, headers: headers);
   }
 
-  Stream<FileResponse> _manageResponse(
-      CacheObject cacheObject, FileServiceResponse response) async* {
+  Stream<FileResponse> _manageResponse(CacheObject cacheObject,
+      FileServiceResponse response, String urlExtension) async* {
     final hasNewFile = statusCodesNewFile.contains(response.statusCode);
     final keepOldFile = statusCodesFileNotChanged.contains(response.statusCode);
     if (!hasNewFile && !keepOldFile) {
@@ -128,7 +129,8 @@ class WebHelper {
     }
 
     final oldCacheObject = cacheObject;
-    var newCacheObject = _setDataFromHeaders(cacheObject, response);
+    var newCacheObject =
+    _setDataFromHeaders(cacheObject, response, urlExtension);
     if (statusCodesNewFile.contains(response.statusCode)) {
       var savedBytes = 0;
       await for (final progress in _saveFile(newCacheObject, response)) {
@@ -157,11 +159,13 @@ class WebHelper {
     );
   }
 
-  CacheObject _setDataFromHeaders(
-      CacheObject cacheObject, FileServiceResponse response) {
-    final fileExtension = response.fileExtension;
+  CacheObject _setDataFromHeaders(CacheObject cacheObject,
+      FileServiceResponse response, String urlExtension) {
+    var fileExtension = response.fileExtension;
     var filePath = cacheObject.relativePath;
-
+    if (fileExtension != urlExtension) {
+      fileExtension = urlExtension;
+    }
     if (!statusCodesFileNotChanged.contains(response.statusCode)) {
       if (!filePath.endsWith(fileExtension)) {
         //Delete old file directly when file extension changed
